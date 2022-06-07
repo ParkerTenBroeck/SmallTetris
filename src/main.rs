@@ -12,8 +12,7 @@ pub fn main() {
         ..Default::default()
     };
 
-    eframe::run_native("CLike", native_options, Box::new(|cc|{
-        
+    eframe::run_native("Tetris", native_options, Box::new(|cc|{
         let app = app::TetrisWindow::new(&cc.egui_ctx);
         cc.egui_ctx.set_visuals(eframe::egui::Visuals::dark());
         Box::new(app)
@@ -67,10 +66,7 @@ mod util{
 mod util{
     #[allow(dead_code)]
     #[derive(Copy, Clone)]
-    pub struct Color{
-        #[allow(unused)]
-        raw: [u8; 4]
-    }
+    pub struct Color([u8; 4]);
 
     impl Color{
         #[inline(always)]
@@ -81,6 +77,10 @@ mod util{
         #[inline(always)]
         pub const fn from_rgb_additive(r: u8, g: u8, b: u8) -> Self {
             Self([r, g, b, 0])
+        }
+
+        pub fn is_opaque(&self) -> bool {
+            self.0[3] == 255
         }
     }
 

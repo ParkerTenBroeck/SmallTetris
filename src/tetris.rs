@@ -11,6 +11,18 @@ pub struct Tetris{
 }
 
 impl Tetris{
+
+    #[inline(always)]
+    pub fn rand_num(&self, min: usize, max: usize) -> usize{
+        let mut x = self.frame_counter;
+        x = ((x >> 16) ^ x).wrapping_mul(0x45d9f3b_usize);
+        x = ((x >> 16) ^ x).wrapping_mul(0x45d9f3b_usize);
+        x = (x >> 16) ^ x;
+        let x = (x >> 1) as usize;
+
+        let dif = max.wrapping_sub(min);
+        (x % dif) + min
+    }
     
     pub fn init(interface: crate::platform::Interface) -> Self{
         Tetris {
@@ -35,48 +47,68 @@ impl Tetris{
 mod game{
     use super::Tetris;
 
+    const GRAVITY_TABLE: [u8; 30] = [48,43,38,33,28,23,18,13,8,6,5,5,5,4,4,4,3,3,3,2,2,2,2,2,2,2,2,2,2,1];
 
     pub struct TetrisGame{
         pub piece: Option<FallingPiece>,
+        pub netx_piece: Option<Tetrominoes>,
         pub board: Board,
         pub score: usize,
+        pub level: usize,
+        pub lines_cleared: usize,
+        pub combo_count: usize,
     }
 
     impl TetrisGame{
         pub fn get_curr_piece(&self) -> Option<(u8, [Coord; 4])>{
             match &self.piece{
                 Some(val) => {
-                    let t = val.piece_type.get_coords(val.rotation);
-                    let mut coords = [[0,0i16].into(); 4];
-                    for i in 0..4{
-                        coords[i] = val.coords + t[i].into();
-                    }
-                
-                    Option::Some((val.piece_type.as_num(), coords))
+                    Option::Some((val.piece_type.as_num(), val.get_coords()))
                 },
                 None => Option::None,
             }
         }
 
-        pub fn get_dropped_piece(&self) -> Option<(u8, [Coord; 4])>{
+        pub fn get_dropped_piece(&self) -> Option<(u8, [Coord; 4], u8)>{
             match &self.piece{
                 Some(val) => {
-                    let t = val.piece_type.get_coords(val.rotation);
-                    let mut coords = [[0,0i16].into(); 4];
-                    for i in 0..4{
-                        coords[i] = val.coords + t[i].into();
+                    let mut coords = val.get_coords();
+                    let mut distance = 0u8;
+                    'main_loop:
+                    loop{
+                        for coord in coords{
+                            if self.board.is_intersecting(coord + [0,1i16].into()){
+                                break 'main_loop;
+                            }
+                        }
+                        for coord in &mut coords{
+                            *coord = *coord + [0,1i16].into();
+                        }
+                        distance += 1;
                     }
                 
-                    Option::Some((val.piece_type.as_num(), coords))
+                    Option::Some((val.piece_type.as_num(), coords, distance))
                 },
                 None => Option::None,
             }
         }
     }
+    #[derive(Clone, Copy)]
     pub struct FallingPiece{
         piece_type: Tetrominoes,
+        frames_since_last_fall: usize,
         rotation: u8,
         coords: Coord,
+    }
+    impl FallingPiece{
+        pub fn get_coords(&self) -> [Coord; 4]{
+            let t = self.piece_type.get_coords(self.rotation);
+            let mut coords = [[0,0i16].into(); 4];
+            for i in 0..4{
+                coords[i] = self.coords + t[i].into();
+            }
+            coords
+        }
     }
 
     pub struct Board{
@@ -85,7 +117,24 @@ mod game{
 
     impl Board{
         fn new() -> Self{
-            Self { data: [12; 40] }
+            Self { data: [0; 40] }
+        }
+        fn is_intersecting(&self, coord: Coord) -> bool{
+            if coord.x < 0 || coord.x >= 10{
+                return true
+            }
+            if coord.y < 0 || coord.y >= 40{
+                return true
+            }
+            self.is_full(coord)
+        }
+        fn is_any_intersecting(&self, coords: &[Coord]) -> bool{
+            for coord in coords{
+                if self.is_intersecting(*coord){
+                    return true;
+                }
+            }
+            return false
         }
         #[inline(always)]
         fn is_empty(&self, coord: Coord) -> bool{
@@ -97,7 +146,7 @@ mod game{
         }
         #[inline(always)]
         pub fn data_at_coord(&self, coord: Coord) -> u8{
-            ((self.data[coord.y as usize] >> (coord.x * 3)) & 7) as u8 
+            ((self.data[coord.y as usize] >> (coord.x * 3)) & 7) as u8
         }
         #[inline(always)]
         fn set_data_at_coord(&mut self, data: u8, coord: Coord){
@@ -110,8 +159,12 @@ mod game{
         pub fn init() -> Self{
             Self { 
                 piece: Option::None,
+                netx_piece: Option::None,  
                 board: Board::new(),
-                score: 0,  
+                score: 0,
+                level: 0,
+                lines_cleared: 0,
+                combo_count: 0,
             }
         }
     }
@@ -226,10 +279,97 @@ mod game{
                 Tetrominoes::Z => 6,
             }
         }
+
+        pub fn from_num(num: u8) -> Tetrominoes{
+            match num{
+                0 => Tetrominoes::I,
+                1 => Tetrominoes::J,
+                2 => Tetrominoes::L,
+                3 => Tetrominoes::O,
+                4 => Tetrominoes::S,
+                5 => Tetrominoes::T,
+                6 => Tetrominoes::Z,
+                _ => {panic!()}
+            }
+        }
     }
 
     impl Tetris{
-        pub fn update_game(&self){
+        pub fn update_game(&mut self){
+
+            if self.input.drop_down_pressed(){
+                match self.game.get_dropped_piece(){
+                    Some(dropped) => {
+                        for coord in dropped.1{
+                            self.game.board.set_data_at_coord(dropped.0 + 1, coord);
+                        }
+                        self.game.score += dropped.2 as usize * 2;
+                        self.game.piece = Option::None;
+                    },
+                    None => {
+
+                    },
+                }
+            }
+
+            let mut new = false;
+            match &mut self.game.piece{
+                Some(piece) => {
+                    piece.frames_since_last_fall += 1;
+
+                    let mut grav = GRAVITY_TABLE[self.game.level.clamp(0, 29)];
+                    if self.input.down_pressed(){
+                        grav >>= 1;
+                        self.game.score += 1;
+                    }
+                    if piece.frames_since_last_fall > grav as usize{
+                        piece.coords = piece.coords +  [0, 1i16].into();
+                        let coords = piece.get_coords();
+                        if self.game.board.is_any_intersecting(&coords){
+                            new = true;
+                            piece.coords = piece.coords - [0, 1i16].into();
+                            for coord in piece.get_coords(){
+                                self.game.board.set_data_at_coord(piece.piece_type.as_num() + 1, coord);
+                            }
+                        }
+                        
+                        piece.frames_since_last_fall = 0;
+                    }
+
+                    if self.input.left_pressed(){
+                        piece.coords = piece.coords - [1i16, 0].into();
+                        if self.game.board.is_any_intersecting(&piece.get_coords()){
+                            piece.coords = piece.coords + [1i16, 0].into();
+                        }
+                    }
+                    if self.input.right_pressed(){
+                        piece.coords = piece.coords + [1i16, 0].into();
+                        if self.game.board.is_any_intersecting(&piece.get_coords()){
+                            piece.coords = piece.coords - [1i16, 0].into();
+                        }
+                    }
+                    if self.input.up_pressed(){
+                        piece.rotation = (piece.rotation + 1) & 3;
+                        if self.game.board.is_any_intersecting(&piece.get_coords()){
+                            piece.rotation = (piece.rotation - 1) & 3;
+                        }
+                    }
+                },
+                None => {
+                    new = true;
+                },
+            }
+            if new{
+                self.game.piece = Option::Some(FallingPiece{
+                    piece_type: Tetrominoes::from_num(self.rand_num(0, 7) as u8),
+                    frames_since_last_fall: 0,
+                    rotation: 0,
+                    coords: [5, 22i16].into(),
+                });
+            }
+        }
+
+        fn drop_piece(&mut self, piece: FallingPiece){
             
         }
     }
@@ -238,8 +378,8 @@ mod game{
 
 pub mod renderer{
 
-    pub const WIDTH: usize = 12*8;
-    pub const HEIGHT: usize = 22*8;
+    pub const WIDTH: usize = (1+12)*8;
+    pub const HEIGHT: usize = (1+22)*8;
 
     use crate::{tetris::game::Coord, InterfaceTrait, util::Color};
 
@@ -255,6 +395,8 @@ pub mod renderer{
             }
         }   
     }
+
+    const CHACATER_SET: &'static [u8; 768] = include_bytes!("../res/character-tile-set.comp");
 
     const TETROMINOE_PALLETE: [[Color; 5]; 8] = [
         [
@@ -337,19 +479,30 @@ pub mod renderer{
                     if data == 0{
                         self.fill_cube([x+1,y+1].into(), Color::from_rgb(0, 0, 0));
                     }else{
-                        self.ghost_cube([x+1, y+1].into(), TETROMINOE_PALLETE[data as usize][0]);
+                        self.draw_cube([x+1, y+1].into(), &TETROMINOE_PALLETE[data as usize - 1]);
                     }
                 }
+            }
+
+            match self.game.get_dropped_piece(){
+                Some(piece) => {
+                    for coord in piece.1{
+                        self.ghost_cube(coord - [-1,19i16].into(), TETROMINOE_PALLETE[piece.0 as usize][0])
+                    }
+                },
+                None => {},
             }
 
             match self.game.get_curr_piece(){
                 Some(piece) => {
                     for coord in piece.1{
-                        self.draw_cube(coord + [1,1i16].into(), &TETROMINOE_PALLETE[piece.0 as usize])
+                        self.draw_cube(coord - [-1,19i16].into(), &TETROMINOE_PALLETE[piece.0 as usize])
                     }
                 },
                 None => {},
             }
+
+            self.display_number(self.frame_counter, [10i16, 1].into(), 4, Color::from_rgb(255, 255, 255), Color::from_rgb_additive(0, 0, 0));
 
             self.interface.update_screen();
             self.frame_counter += 1;
@@ -402,6 +555,40 @@ pub mod renderer{
             for y in 1..7{
                 self.interface.set_pixel(location.x as usize, location.y as usize + y, color);
                 self.interface.set_pixel(location.x as usize + 7, location.y as usize + y, color);
+            }
+        }
+
+        fn display_number(&mut self, mut num: usize, mut location: Coord, leading_zeros: usize, forground: Color, background: Color){
+            let mut iters = 0;
+            while num > 0{
+                let n = num % 10;
+                num /= 10;
+                self.draw_chacater(location, n + 16, forground, background);
+                iters += 1;
+                location.x -= 1;
+            }
+            for _ in iters..leading_zeros{
+                self.draw_chacater(location, 16, forground, background);
+                location.x -= 1;
+            }
+        }
+
+        fn draw_chacater(&mut self, location: Coord, char: usize, forground: Color, background: Color){
+            let char = char * 8;
+            for y in 0..8{
+                let mut char = CHACATER_SET[char + y];
+                for x in 0..8{
+                    
+                    let color = if char & 1 == 1{
+                        forground
+                    }else{
+                        background
+                    };
+                    if color.is_opaque(){
+                        self.interface.set_pixel(x + (location.x*8) as usize, y + (location.y*8) as usize, color);
+                    }
+                    char >>= 1;
+                }
             }
         }
 
