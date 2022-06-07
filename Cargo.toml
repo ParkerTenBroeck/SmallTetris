@@ -1,0 +1,25 @@
+[package]
+name = "tetris"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.60"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+# [lib]
+# name = "tetris"
+# path = "src/lib.rs"
+# crate-type = ["staticlib"]
+
+[[bin]]
+name = "tetris"
+path = "src/main.rs"
+
+#[dependencies]
+#eframe = { git = "https://github.com/ParkerTenBroeck/egui"} # Gives us egui, epi and web+native backends
+
+[target.'cfg(not(target_arch = "mips"))'.dependencies]
+eframe = { git = "https://github.com/ParkerTenBroeck/egui" }
+
+[build-dependencies]
+png = {version = "*"}

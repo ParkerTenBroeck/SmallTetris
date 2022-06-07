@@ -1,0 +1,14 @@
+[target.mips-unknown-linux-gnu]
+linker = "mips-linux-gnu-ld"
+rustflags = [
+"--emit", "asm",
+"--emit", "obj", 
+"-C", "llvm-args=--disable-mips-delay-filler ",
+"-C", "lto=off",
+"-C", "link-args=--no-compact-branches --no-relax",
+"-C", "link-self-contained=y",
+"-C", "code-model=small"]
+
+# "-C", "debuginfo=0", 
+[build]
+#target = "mips-unknown-linux-gnu"
