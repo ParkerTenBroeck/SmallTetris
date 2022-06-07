@@ -37,23 +37,106 @@ mod game{
 
 
     pub struct TetrisGame{
-
+        pub piece: Option<FallingPiece>,
+        pub board: Board,
+        pub score: usize,
     }
+
+    impl TetrisGame{
+        pub fn get_curr_piece(&self) -> Option<(u8, [Coord; 4])>{
+            match &self.piece{
+                Some(val) => {
+                    let t = val.piece_type.get_coords(val.rotation);
+                    let mut coords = [[0,0i16].into(); 4];
+                    for i in 0..4{
+                        coords[i] = val.coords + t[i].into();
+                    }
+                
+                    Option::Some((val.piece_type.as_num(), coords))
+                },
+                None => Option::None,
+            }
+        }
+
+        pub fn get_dropped_piece(&self) -> Option<(u8, [Coord; 4])>{
+            match &self.piece{
+                Some(val) => {
+                    let t = val.piece_type.get_coords(val.rotation);
+                    let mut coords = [[0,0i16].into(); 4];
+                    for i in 0..4{
+                        coords[i] = val.coords + t[i].into();
+                    }
+                
+                    Option::Some((val.piece_type.as_num(), coords))
+                },
+                None => Option::None,
+            }
+        }
+    }
+    pub struct FallingPiece{
+        piece_type: Tetrominoes,
+        rotation: u8,
+        coords: Coord,
+    }
+
+    pub struct Board{
+        data: [u32; 40]
+    }
+
+    impl Board{
+        fn new() -> Self{
+            Self { data: [12; 40] }
+        }
+        #[inline(always)]
+        fn is_empty(&self, coord: Coord) -> bool{
+            self.data_at_coord(coord) == 0
+        }
+        #[inline(always)]
+        fn is_full(&self, coord: Coord) -> bool{
+            !self.is_empty(coord)
+        }
+        #[inline(always)]
+        pub fn data_at_coord(&self, coord: Coord) -> u8{
+            ((self.data[coord.y as usize] >> (coord.x * 3)) & 7) as u8 
+        }
+        #[inline(always)]
+        fn set_data_at_coord(&mut self, data: u8, coord: Coord){
+            let y = &mut self.data[coord.y as usize];
+            *y = (*y & (!(7 << (coord.x as u32 * 3)))) | ((data as u32 & 7) << (coord.x * 3))
+        }
+    }
+
     impl TetrisGame{
         pub fn init() -> Self{
-            Self {  }
+            Self { 
+                piece: Option::None,
+                board: Board::new(),
+                score: 0,  
+            }
         }
     }
 
     #[derive(Default, Copy, Clone)]
     pub struct Coord{
-        pub x: u8,
-        pub y: u8
+        pub x: i16,
+        pub y: i16
+    }
+
+    impl Coord{
+        pub fn scale(&self, scaler: i16) -> Self{
+            Coord{x: self.x * scaler, y: self.y * scaler}
+        }
+    }
+
+    impl From<[i16; 2]> for Coord{
+        fn from(coord: [i16; 2]) -> Self {
+            Coord { x: coord[0], y: coord[1] }
+        }
     }
 
     impl From<[u8; 2]> for Coord{
         fn from(coord: [u8; 2]) -> Self {
-            Coord { x: coord[0], y: coord[1] }
+            Coord { x: coord[0] as i16, y: coord[1] as i16 }
         }
     }
     impl core::ops::Add for Coord{
@@ -68,7 +151,7 @@ mod game{
             [self.x - rhs.x, self.y - rhs.y].into()
         }
     }
-    impl From<Coord> for [u8; 2]{
+    impl From<Coord> for [i16; 2]{
         fn from(coord: Coord) -> Self {
             [coord.x, coord.y]
         }
@@ -129,23 +212,25 @@ mod game{
                     [[3,0],[2,1],[1,2],[0,3]],//filler
                 ],
             ];
-            rotation_matrix[rotation as usize][
-                match self{
-                    Tetrominoes::I => 0,
-                    Tetrominoes::J => 1,
-                    Tetrominoes::L => 2,
-                    Tetrominoes::O => 3,
-                    Tetrominoes::S => 4,
-                    Tetrominoes::T => 5,
-                    Tetrominoes::Z => 6,
-                }
-            ]
+            rotation_matrix[rotation as usize][self.as_num() as usize]
+        }
+
+        pub fn as_num(&self) -> u8{
+            match self{
+                Tetrominoes::I => 0,
+                Tetrominoes::J => 1,
+                Tetrominoes::L => 2,
+                Tetrominoes::O => 3,
+                Tetrominoes::S => 4,
+                Tetrominoes::T => 5,
+                Tetrominoes::Z => 6,
+            }
         }
     }
 
     impl Tetris{
         pub fn update_game(&self){
-
+            
         }
     }
     
@@ -234,120 +319,45 @@ pub mod renderer{
         pub fn render_frame(&mut self){
 
             for x in 0..12{
-                self.draw_cube([x,0], &TETROMINOE_PALLETE[7]);
+                self.draw_cube([x,0i16].into(), &TETROMINOE_PALLETE[7]);
             }
             for x in 0..12{
-                self.draw_cube([x,21], &TETROMINOE_PALLETE[7]);
+                self.draw_cube([x,21i16].into(), &TETROMINOE_PALLETE[7]);
             }
             for y in 1..21{
-                self.draw_cube([0,y], &TETROMINOE_PALLETE[7]);
+                self.draw_cube([0i16,y].into(), &TETROMINOE_PALLETE[7]);
             }
             for y in 1..21{
-                self.draw_cube([11,y], &TETROMINOE_PALLETE[7]);
+                self.draw_cube([11i16,y].into(), &TETROMINOE_PALLETE[7]);
             }
 
-
-
-            for x in 0..10{
-                for y in 0..20{ //282589933 tiles??
-                    // let mut h:usize = x+ y * 20;
-                    // h = ((h >> 16) ^ h).wrapping_mul(0x45d9f3b);
-                    // h = ((h >> 16) ^ h).wrapping_mul(0x45d9f3b);
-                    // h = (x >> 16) ^ h;
-                    // let h = h >> 1;
-
-                    // self.draw_cube([x as u8+1,y as u8+1], palette[h % 7]);
-                    self.fill_cube([x+1,y+1], Color::from_rgb(0, 0, 0)/*.linear_multiply(0.3)*/);
+            for x in 0u8..10{
+                for y in 0u8..20{
+                    let data = self.game.board.data_at_coord([x,y + 20].into());
+                    if data == 0{
+                        self.fill_cube([x+1,y+1].into(), Color::from_rgb(0, 0, 0));
+                    }else{
+                        self.ghost_cube([x+1, y+1].into(), TETROMINOE_PALLETE[data as usize][0]);
+                    }
                 }
             }
 
-            unsafe{
-                static mut ROT: usize = 0;
-                static mut TET: usize = 0;
-                static mut POS: Coord = Coord{x: 1, y: 1};
-
-                if self.input.left_pressed(){
-                    if POS.x > 0{
-                        POS.x -= 1;
+            match self.game.get_curr_piece(){
+                Some(piece) => {
+                    for coord in piece.1{
+                        self.draw_cube(coord + [1,1i16].into(), &TETROMINOE_PALLETE[piece.0 as usize])
                     }
-                }
-                if self.input.right_pressed(){
-                    POS.x += 1;
-                }
-                if self.input.down_pressed(){
-                    POS.y += 1;
-                }
-                if self.input.up_pressed(){
-                    if POS.y > 0{
-                        POS.y -= 1;
-                    }
-                }
-                if self.input.save_pressed(){
-                    ROT += 1;
-                }
-                if self.input.drop_down_pressed(){
-                    TET += 1;
-                }
-
-                ROT = ROT % 4;
-                TET = TET % 7;
-                
-                use super::{game::Tetrominoes::*};
-                let mut coords = [I,J,L,O,S,T,Z][TET].get_coords(ROT as u8);
-                
-                while{
-                    let thing = ||{
-                        for coord in coords{
-                            let coord = POS + coord.into();
-                            if coord.x >= 12{
-                                POS.x -= 1;
-                                return true;
-                            }
-                            if coord.y >= 22{
-                                POS.y -= 1;
-                                return true;
-                            }
-                        }
-                        false
-                    };
-                    thing()
-                }
-                {
-                    coords = [I,J,L,O,S,T,Z][TET].get_coords(ROT as u8);
-                }
-
-                for coord in coords{
-                    self.draw_cube((POS + coord.into()).into(), &TETROMINOE_PALLETE[TET]);
-                } 
+                },
+                None => {},
             }
 
             self.interface.update_screen();
             self.frame_counter += 1;
         }
 
-        fn draw_cube(&mut self, coords: [u8; 2], cube_pallete: &[Color; 5]){
-            let start_x = coords[0] as usize * 8;
-            let start_y = coords[1] as usize * 8;
-
-            impl TrueColorMath for Color{
-                fn lighten(self, _amount: f32) -> Color{
-                    // let color = [self.r() as f32 / 255.0,self.g() as f32 / 255.0,self.b() as f32 / 255.0];
-                    // let mut color = eframe::egui::color::Hsva::from_rgb(color);
-                   
-                    // let amount = amount + 1.0;
-
-                    // color.s = (color.s / amount).clamp(0.0, 1.0);
-                    // color.v = (color.v * amount).clamp(0.0, 1.0);
-                    
-                    // let color = color.to_rgb();
-                    // Color::from_rgb((color[0] * 255.0) as u8, (color[1] * 255.0) as u8, (color[2] * 255.0) as u8)
-                    self
-                }
-            }
-            trait TrueColorMath{
-                fn lighten(self, amount: f32) -> Self;
-            }
-
+        fn draw_cube(&mut self, coords: Coord, cube_pallete: &[Color; 5]){
+            let start_x = coords.x as usize * 8;
+            let start_y = coords.y as usize * 8;
 
             for x in 0..8{
                 for y in 0..8{
@@ -375,14 +385,40 @@ pub mod renderer{
                     if color.is_opaque(){
                         self.interface.set_pixel(x + start_x, y + start_y, color);
                     }
-                    //self.renderer.frame.pixels[x + start_x + (y+start_y)*WIDTH] = color;
                 }
             }
         }
 
-        fn fill_cube(&mut self, coords: [u8; 2], color: Color){
-            let start_x = coords[0] as usize * 8;
-            let start_y = coords[1] as usize * 8;
+        fn ghost_cube(&mut self, location: Coord, color: Color){
+
+            if !color.is_opaque(){
+                return;
+            }
+            let location = location.scale(8);
+            for x in 0..8{
+                self.interface.set_pixel(location.x as usize + x, location.y as usize, color);
+                self.interface.set_pixel(location.x as usize + x, location.y as usize + 7, color);
+            }
+            for y in 1..7{
+                self.interface.set_pixel(location.x as usize, location.y as usize + y, color);
+                self.interface.set_pixel(location.x as usize + 7, location.y as usize + y, color);
+            }
+        }
+
+        fn draw_tile(&mut self, location: Coord, tile: &[u8; 256], pallet: &[Color]){
+            for x in 0..8{
+                for y in 0..8{
+                    let color = pallet[tile[x + y*8] as usize];
+                    if color.is_opaque(){
+                        self.interface.set_pixel(x + (location.x*8) as usize, y + (location.y*8) as usize, color);
+                    }
+                }
+            }
+        }
+
+        fn fill_cube(&mut self, coords: Coord, color: Color){
+            let start_x = coords.x as usize * 8;
+            let start_y = coords.y as usize * 8;
 
             for x in 0..8{
                 for y in 0..8{
