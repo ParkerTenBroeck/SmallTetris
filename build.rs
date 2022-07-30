@@ -4,9 +4,10 @@ use std::{fs::File, io::Write};
 
 fn main(){
     let decoder = png::Decoder::new(File::open("res/character-tile-set.png").unwrap());
-    let reader = decoder.read_info().unwrap();
+    let mut reader = decoder.read_info().unwrap();
     
-    let buf = vec![0u8; reader.output_buffer_size()];
+    let mut buf = vec![0u8; reader.output_buffer_size()];
+    let _ = reader.next_frame(buf.as_mut_slice());
     
     let mut new: Vec<u8> = Vec::new();
     for y in 0..6{
@@ -25,7 +26,6 @@ fn main(){
     }
     let mut file = File::create("res/character-tile-set.comp").unwrap();
     file.write(&new).unwrap();
-
     arch_specific();
 }
 

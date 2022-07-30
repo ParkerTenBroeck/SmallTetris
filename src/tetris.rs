@@ -20,7 +20,7 @@ impl Tetris{
         x = (x >> 16) ^ x;
         let x = (x >> 1) as usize;
 
-        let dif = max.wrapping_sub(min);
+        let dif = (max + 1).wrapping_sub(min);
         (x % dif) + min
     }
     
@@ -44,6 +44,58 @@ impl Tetris{
     }
 }
 
+pub mod util{
+
+    pub fn factorial(mut num: usize) -> usize{
+        if num <= 1{
+            return 1;
+        }
+        for i in 2..num{
+            num *= i
+        }
+        num
+    }
+
+    pub fn permutate<T>(items: &mut [T], mut permutation: usize){
+        debug_assert!(permutation < factorial(items.len()));
+        debug_assert!(items.len() >= 2);
+
+        let len = items.len();
+        let mut i = 0;
+        //len to 2
+        for n in (2..=len).rev(){
+            let fact = factorial(n - 1);
+            let t = permutation / fact;
+            permutation -= t*fact;
+            for i in (i..i+t).rev(){
+                items.swap(i, i+1);
+            }
+            i += 1;
+        }
+    }
+
+    pub fn rank_permutation<T: Eq>(items: &[T], base: &[T]) -> usize{
+        debug_assert!(items.len() == base.len());
+
+        // stackalloc::alloca(12, |asd|{
+
+        // });
+        0
+        // stackalloc::stackalloc_with_iter(items.len(), base.iter(), |base_c|{
+        //     let mut result = 0;
+        //     for i in 0..items.len()-1{
+        //         let base_index = base_c.iter().position(|item|{ **item == items[i]}).unwrap();
+        //         //base.remove(base_index);
+        //         for i in base_index..items.len()-1{
+        //             base_c.swap(i, i+1);
+        //         }
+        //         result += base_index * factorial(3-i);    
+        //     }
+        //     result
+        // })
+    }
+}
+
 mod game{
     use super::Tetris;
 
@@ -57,6 +109,7 @@ mod game{
         pub level: usize,
         pub lines_cleared: usize,
         pub combo_count: usize,
+        pub piece_stats: [usize; 8]
     }
 
     impl TetrisGame{
@@ -165,6 +218,7 @@ mod game{
                 level: 0,
                 lines_cleared: 0,
                 combo_count: 0,
+                piece_stats: [0; 8],
             }
         }
     }
@@ -297,6 +351,9 @@ mod game{
     impl Tetris{
         pub fn update_game(&mut self){
 
+
+            let mut new = false;
+
             if self.input.drop_down_pressed(){
                 match self.game.get_dropped_piece(){
                     Some(dropped) => {
@@ -304,15 +361,14 @@ mod game{
                             self.game.board.set_data_at_coord(dropped.0 + 1, coord);
                         }
                         self.game.score += dropped.2 as usize * 2;
-                        self.game.piece = Option::None;
+                        new = true;
                     },
                     None => {
 
                     },
                 }
-            }
+            }else{
 
-            let mut new = false;
             match &mut self.game.piece{
                 Some(piece) => {
                     piece.frames_since_last_fall += 1;
@@ -351,7 +407,7 @@ mod game{
                     if self.input.up_pressed(){
                         piece.rotation = (piece.rotation + 1) & 3;
                         if self.game.board.is_any_intersecting(&piece.get_coords()){
-                            piece.rotation = (piece.rotation - 1) & 3;
+                            piece.rotation = piece.rotation.wrapping_sub(1) & 3;
                         }
                     }
                 },
@@ -359,9 +415,20 @@ mod game{
                     new = true;
                 },
             }
+            }
+
             if new{
+                match self.game.piece {
+                    Some(piece) => {
+                        self.game.piece_stats[piece.piece_type.as_num() as usize] += 1;
+                        self.game.piece_stats[7] += 1;
+                    },
+                    None => {
+
+                    },
+                }
                 self.game.piece = Option::Some(FallingPiece{
-                    piece_type: Tetrominoes::from_num(self.rand_num(0, 7) as u8),
+                    piece_type: Tetrominoes::from_num(self.rand_num(0, 6) as u8),
                     frames_since_last_fall: 0,
                     rotation: 0,
                     coords: [5, 22i16].into(),
@@ -378,8 +445,8 @@ mod game{
 
 pub mod renderer{
 
-    pub const WIDTH: usize = (1+12)*8;
-    pub const HEIGHT: usize = (1+22)*8;
+    pub const WIDTH: usize = (32)*8;
+    pub const HEIGHT: usize = (30)*8;
 
     use crate::{tetris::game::Coord, InterfaceTrait, util::Color};
 
@@ -460,6 +527,8 @@ pub mod renderer{
     impl Tetris{
         pub fn render_frame(&mut self){
 
+            self.interface.clear_screen(Color::from_rgb(0, 0, 0));
+
             for x in 0..12{
                 self.draw_cube([x,0i16].into(), &TETROMINOE_PALLETE[7]);
             }
@@ -501,8 +570,12 @@ pub mod renderer{
                 },
                 None => {},
             }
+            
+            for i in 0..8{
+                self.display_number(self.game.piece_stats[i], [15i16, i as i16].into(), 3, Color::from_rgb(255, 255, 255), Color::from_rgb_additive(0, 0, 0))
+            }
 
-            self.display_number(self.frame_counter, [10i16, 1].into(), 4, Color::from_rgb(255, 255, 255), Color::from_rgb_additive(0, 0, 0));
+            self.display_number(self.frame_counter, [10i16, 12].into(), 4, Color::from_rgb(255, 255, 255), Color::from_rgb_additive(0, 0, 0));
 
             self.interface.update_screen();
             self.frame_counter += 1;
@@ -563,6 +636,7 @@ pub mod renderer{
             while num > 0{
                 let n = num % 10;
                 num /= 10;
+                //self. fill_cube(location, forground);
                 self.draw_chacater(location, n + 16, forground, background);
                 iters += 1;
                 location.x -= 1;

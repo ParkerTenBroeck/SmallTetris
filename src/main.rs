@@ -1,13 +1,22 @@
 #![cfg_attr(target_arch = "mips", no_std)]
-#![cfg_attr(target_arch = "mips", feature(lang_items, start))]
-#![cfg_attr(target_arch = "mips", no_builtins)]
+#![cfg_attr(target_arch = "mips", no_main)]
+#![cfg_attr(target_arch = "mips", feature(lang_items))]
 
 
 pub mod tetris;
 
-
 #[cfg(not(target_arch = "mips"))]
 pub fn main() {
+
+    // let mut items = [1,2,3,4];
+    // tetris::util::permutate(&mut items, i);
+    // println!("items: {:?}", items);
+    // println!("val2: {}", tetris::util::rank_permutation(items.as_slice(), &[1,2,3,4]));
+    // println!();
+    
+
+    println!("{:#?}", thing);
+
     let native_options = eframe::NativeOptions{
         ..Default::default()
     };
@@ -19,27 +28,38 @@ pub fn main() {
     }));
 }
 
+
 #[cfg(target_arch = "mips")]
 #[no_mangle]
-#[start]
-fn start(_argc: isize, _argv: *const *const u8) -> isize{
+pub unsafe extern "C" fn memset(){
+
+}
+
+#[cfg(target_arch = "mips")]
+#[no_mangle]
+#[link_section = ".text.start"]
+pub extern "C" fn __start() -> !{
     use tetris::Tetris;
 
     use crate::{platform::Interface, util::sleep_delta_mills};
 
     let interface = Interface{
-
     };
 
     let mut tetris = Tetris::init(interface);
     loop{
-        if !tetris.run_frame(){
+        if tetris.run_frame(){
+            sleep_delta_mills(17);
+        }else{
             break;
         }
-        sleep_delta_mills(17);
     }
-    0
+    loop{
+
+    }
 }
+
+
 
 
 #[cfg(target_arch = "mips")]
